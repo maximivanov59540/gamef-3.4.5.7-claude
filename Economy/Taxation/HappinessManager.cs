@@ -19,7 +19,7 @@ public class HappinessManager : MonoBehaviour
     [Tooltip("Максимальный уровень счастья (для UI)")]
     public float maxHappiness = 100f;
 
-    [Header("=== События счастья ===")]
+    // --- События счастья ---
     public event System.Action<float> OnHappinessChanged;
 
     // --- Unity Lifecycle ---
