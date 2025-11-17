@@ -770,9 +770,8 @@ public class CartAgent : MonoBehaviour
         {
             Debug.Log($"[CartAgent] {name}: Путь к источнику Input найден, начинаю движение");
             // Переходим в состояние "едем за Input"
-            // Используем ReturningWithInput, но без груза (просто едем к источнику)
+            // Используем ReturningWithInput, но без груза (слоты уже пусты)
             _state = State.ReturningWithInput;
-            _cargoAmount = 0;
         }
         else
         {
