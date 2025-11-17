@@ -1,17 +1,50 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 /// <summary>
-/// Упрощённая тележка, работающая в цикле для ОДНОГО производственного здания.
-/// 
+/// Слот для груза в тележке
+/// Каждый слот может содержать до 5 единиц ОДНОГО типа ресурса
+/// </summary>
+[System.Serializable]
+public class CargoSlot
+{
+    public ResourceType resourceType = ResourceType.None;
+    public float amount = 0f;
+    public const float MAX_CAPACITY = 5f;
+
+    public bool IsEmpty => amount <= 0 || resourceType == ResourceType.None;
+    public bool IsFull => amount >= MAX_CAPACITY;
+    public float AvailableSpace => MAX_CAPACITY - amount;
+
+    public void Clear()
+    {
+        resourceType = ResourceType.None;
+        amount = 0f;
+    }
+
+    public bool CanAccept(ResourceType type)
+    {
+        return IsEmpty || (resourceType == type && !IsFull);
+    }
+}
+
+/// <summary>
+/// Улучшенная тележка с поддержкой множественных грузов
+///
+/// НОВЫЕ ВОЗМОЖНОСТИ:
+/// - 3 слота для грузов (вместо 1)
+/// - Каждый слот вмещает до 5 единиц ресурса
+/// - Один слот = один тип ресурса
+///
 /// ЦИКЛ РАБОТЫ:
-/// 1. Загрузить Output (продукцию) из дома
+/// 1. Загрузить до 3 типов Output (продукции) из дома
 /// 2. Отвезти Output к получателю (склад/другое здание)
-/// 3. Разгрузить Output
-/// 4. Загрузить Input (сырьё) на месте разгрузки
+/// 3. Разгрузить все типы Output
+/// 4. Загрузить до 3 типов Input (сырья) на месте разгрузки
 /// 5. Вернуться домой с Input
-/// 6. Разгрузить Input
+/// 6. Разгрузить все типы Input
 /// 7. Повторить
 /// </summary>
 [RequireComponent(typeof(BuildingIdentity))]
@@ -42,29 +75,28 @@ public class CartAgent : MonoBehaviour
     [Header("Настройки Движения")]
     [Tooltip("Скорость движения (юнитов/сек)")]
     public float moveSpeed = 5f;
-    
+
     [Tooltip("Время (сек) на погрузку и разгрузку")]
     public float loadingTime = 2.0f;
-    
-    [Tooltip("Грузоподъёмность (сколько может везти за раз)")]
-    public float cargoCapacity = 100f;
-    
+
     // ════════════════════════════════════════════════════════════════
     //                    ССЫЛКИ НА "ДОМ"
     // ════════════════════════════════════════════════════════════════
-    
+
     private Transform _homeBase;
     private Vector2Int _homePosition;
     private BuildingOutputInventory _homeOutput;
     private BuildingInputInventory _homeInput;
     private BuildingResourceRouting _routing;
-    
+
     // ════════════════════════════════════════════════════════════════
-    //                      ТЕКУЩИЙ ГРУЗ
+    //                ГРУЗОВЫЕ СЛОТЫ (3 слота по 5 единиц)
     // ════════════════════════════════════════════════════════════════
-    
-    private float _cargoAmount = 0f;
-    private ResourceType _cargoType;
+
+    [Header("Грузовые Слоты (для отладки)")]
+    [SerializeField] private CargoSlot[] _cargoSlots = new CargoSlot[3];
+
+    private const int CARGO_SLOTS_COUNT = 3;
     
     // ════════════════════════════════════════════════════════════════
     //                    СИСТЕМЫ (НЕ МЕНЯЕМ)
@@ -84,6 +116,9 @@ public class CartAgent : MonoBehaviour
     
     void Start()
     {
+        // 0. Инициализируем грузовые слоты
+        InitializeCargoSlots();
+
         // 1. Находим "дом" (родительский объект)
         _homeBase = transform.parent;
         if (_homeBase == null)
@@ -225,7 +260,7 @@ public class CartAgent : MonoBehaviour
     // ════════════════════════════════════════════════════════════════
     
     /// <summary>
-    /// Шаг 1: Загружаем Output (продукцию) из дома
+    /// Шаг 1: Загружаем Output (продукцию) из дома (до 5 единиц в первый слот)
     /// </summary>
     private IEnumerator LoadOutputCoroutine()
     {
@@ -239,18 +274,25 @@ public class CartAgent : MonoBehaviour
             yield break;
         }
 
-        // Забираем продукцию из дома
-        _cargoType = _homeOutput.GetProvidedResourceType();
-        _cargoAmount = _homeOutput.TryTakeResource(_cargoType, cargoCapacity);
+        // Очищаем все слоты перед загрузкой
+        ClearAllCargoSlots();
 
-        if (_cargoAmount <= 0)
+        // Забираем продукцию из дома (Output здания = один тип ресурса)
+        ResourceType outputType = _homeOutput.GetProvidedResourceType();
+        float amountTaken = _homeOutput.TryTakeResource(outputType, CargoSlot.MAX_CAPACITY);
+
+        if (amountTaken <= 0)
         {
             Debug.LogWarning($"[CartAgent] {name}: Не удалось загрузить продукцию из {_homeBase.name}");
             SetState(State.Idle);
             yield break;
         }
 
-        Debug.Log($"[CartAgent] {name} загрузил {_cargoAmount} {_cargoType} из {_homeBase.name}");
+        // Загружаем в первый слот
+        _cargoSlots[0].resourceType = outputType;
+        _cargoSlots[0].amount = amountTaken;
+
+        Debug.Log($"[CartAgent] {name} загрузил {amountTaken} {outputType} из {_homeBase.name} в слот [0]");
 
         // Едем к получателю
         IResourceReceiver destination = _routing.outputDestination;
@@ -266,7 +308,7 @@ public class CartAgent : MonoBehaviour
         Debug.Log($"[CartAgent] {name}: Ищу путь к получателю {destination.GetGridPosition()}...");
         if (FindPathTo(destination.GetGridPosition()))
         {
-            Debug.Log($"[CartAgent] {name}: Путь найден, везу {_cargoAmount} {_cargoType} к {destination.GetGridPosition()}");
+            Debug.Log($"[CartAgent] {name}: Путь найден, везу груз к {destination.GetGridPosition()}");
             SetState(State.DeliveringOutput);
         }
         else
@@ -278,11 +320,11 @@ public class CartAgent : MonoBehaviour
     }
     
     /// <summary>
-    /// Шаг 2: Разгружаем Output в пункт назначения
+    /// Шаг 2: Разгружаем все Output слоты в пункт назначения
     /// </summary>
     private IEnumerator UnloadOutputCoroutine()
     {
-        Debug.Log($"[CartAgent] {name}: UnloadOutputCoroutine начата, разгружаю {_cargoAmount} {_cargoType}");
+        Debug.Log($"[CartAgent] {name}: UnloadOutputCoroutine начата");
         yield return new WaitForSeconds(loadingTime);
 
         IResourceReceiver destination = _routing.outputDestination;
@@ -295,26 +337,40 @@ public class CartAgent : MonoBehaviour
             yield break;
         }
 
-        // Пытаемся разгрузить
-        float delivered = destination.TryAddResource(_cargoType, _cargoAmount);
-        _cargoAmount -= delivered;
+        // Разгружаем все непустые слоты
+        bool anySlotFailed = false;
 
-        if (_cargoAmount > 0)
+        for (int i = 0; i < CARGO_SLOTS_COUNT; i++)
         {
-            // НЕ СМОГЛИ РАЗГРУЗИТЬ ВСЁ - СКЛАД ПОЛОН!
-            Debug.LogWarning($"[CartAgent] {name}: Склад полон! Осталось {_cargoAmount} {_cargoType}. Жду 2 сек...");
+            CargoSlot slot = _cargoSlots[i];
+            if (slot.IsEmpty) continue;
 
-            // Ждём 2 секунды и повторяем попытку
+            float delivered = destination.TryAddResource(slot.resourceType, slot.amount);
+            slot.amount -= delivered;
+
+            Debug.Log($"[CartAgent] {name} разгрузил {delivered} {slot.resourceType} из слота [{i}] в {destination.GetGridPosition()}");
+
+            // Если не смогли разгрузить всё - склад полон
+            if (slot.amount > 0.01f)
+            {
+                anySlotFailed = true;
+                Debug.LogWarning($"[CartAgent] {name}: Склад полон! В слоте [{i}] осталось {slot.amount} {slot.resourceType}");
+            }
+        }
+
+        // Если хоть один слот не разгрузился полностью - ждём и повторяем
+        if (anySlotFailed)
+        {
+            Debug.LogWarning($"[CartAgent] {name}: Не удалось полностью разгрузить. Жду 2 сек...");
             yield return new WaitForSeconds(2f);
             _activeCoroutine = StartCoroutine(UnloadOutputCoroutine());
             yield break;
         }
 
-        Debug.Log($"[CartAgent] {name} разгрузил {delivered} {_cargoType} в {destination.GetGridPosition()}");
+        // Все слоты успешно разгружены
+        ClearAllCargoSlots();
 
-        _cargoAmount = 0;
-
-        // ✅ НОВОЕ: Уведомляем BuildingResourceRouting о завершении доставки для round-robin
+        // ✅ Уведомляем BuildingResourceRouting о завершении доставки для round-robin
         if (_routing != null)
         {
             _routing.NotifyDeliveryCompleted();
@@ -326,12 +382,11 @@ public class CartAgent : MonoBehaviour
     }
     
     /// <summary>
-    /// Шаг 3: Пытаемся загрузить Input на текущей позиции
+    /// Шаг 3: Пытаемся загрузить до 3 типов Input на текущей позиции
     /// </summary>
     private void TryLoadInput()
     {
-        // ✅ ИСПРАВЛЕНИЕ: Проверяем, требует ли здание Input ВООБЩЕ
-        // Для лесопилки _homeInput != null, но requiredResources пустой
+        // ✅ Проверяем, требует ли здание Input ВООБЩЕ
         if (_homeInput == null || _homeInput.requiredResources == null || _homeInput.requiredResources.Count == 0)
         {
             Debug.Log($"[CartAgent] {name}: Дом не требует сырья, возвращаюсь пустым");
@@ -339,16 +394,17 @@ public class CartAgent : MonoBehaviour
             return;
         }
 
-        // Какой ресурс нужен?
-        ResourceType neededType = GetNeededInputType();
-        if (neededType == ResourceType.None)
+        // Получаем список нужных ресурсов (до 3 типов)
+        List<ResourceType> neededTypes = GetNeededInputTypes(CARGO_SLOTS_COUNT);
+
+        if (neededTypes.Count == 0)
         {
             Debug.Log($"[CartAgent] {name}: Все слоты Input заполнены (≥90%), возвращаюсь пустым");
             ReturnHomeEmpty();
             return;
         }
 
-        Debug.Log($"[CartAgent] {name}: Нужен Input: {neededType}");
+        Debug.Log($"[CartAgent] {name}: Нужны Input ресурсы: {string.Join(", ", neededTypes)}");
 
         // Есть ли источник?
         IResourceProvider source = _routing.inputSource;
@@ -359,119 +415,223 @@ public class CartAgent : MonoBehaviour
             return;
         }
 
-        // ✅ НОВОЕ: Если источник - склад, но есть производитель, НЕ БРАТЬ со склада
-        bool isWarehouse = source is Warehouse;
-        if (isWarehouse && HasProducerForResource(neededType))
+        // Проверяем доступность каждого ресурса
+        bool anyResourceAvailable = false;
+        foreach (var resType in neededTypes)
         {
-            Debug.Log($"[CartAgent] {name}: НЕ беру {neededType} со склада! Найден производитель. Жду производства. Возвращаюсь домой пустым.");
-            ReturnHomeEmpty();
-            return;
+            // ✅ Если источник - склад, но есть производитель, НЕ БРАТЬ со склада
+            bool isWarehouse = source is Warehouse;
+            if (isWarehouse && HasProducerForResource(resType))
+            {
+                Debug.Log($"[CartAgent] {name}: Пропускаю {resType} - найден производитель, жду производства");
+                continue;
+            }
+
+            // Проверяем доступность
+            float availableAmount = source.GetAvailableAmount(resType);
+            if (availableAmount >= 1f)
+            {
+                anyResourceAvailable = true;
+                Debug.Log($"[CartAgent] {name}: В источнике доступно {availableAmount} {resType}");
+            }
+            else
+            {
+                Debug.Log($"[CartAgent] {name}: В источнике недостаточно {resType} ({availableAmount})");
+            }
         }
 
-        // Есть ли ресурс в источнике?
-        float availableAmount = source.GetAvailableAmount(neededType);
-        Debug.Log($"[CartAgent] {name}: В источнике {source.GetGridPosition()} доступно {availableAmount} {neededType}");
-
-        if (availableAmount < 1f)
+        if (!anyResourceAvailable)
         {
-            Debug.LogWarning($"[CartAgent] {name}: В источнике нет {neededType}, возвращаюсь пустым");
+            Debug.LogWarning($"[CartAgent] {name}: В источнике нет нужных ресурсов, возвращаюсь пустым");
             ReturnHomeEmpty();
             return;
         }
 
         // Всё ОК - грузим!
-        Debug.Log($"[CartAgent] {name}: Начинаю загрузку {neededType} из {source.GetGridPosition()}");
+        Debug.Log($"[CartAgent] {name}: Начинаю загрузку Input ресурсов из {source.GetGridPosition()}");
         SetState(State.LoadingInput);
     }
     
     /// <summary>
-    /// Шаг 4: Загружаем Input с текущей позиции
+    /// Шаг 4: Загружаем до 3 типов Input с текущей позиции
     /// </summary>
     private IEnumerator LoadInputCoroutine()
     {
         Debug.Log($"[CartAgent] {name}: LoadInputCoroutine начата, ждем {loadingTime} сек...");
-        Debug.Log($"[CartAgent] {name}: Текущая позиция: {transform.position}");
         yield return new WaitForSeconds(loadingTime);
-
-        ResourceType neededType = GetNeededInputType();
-        if (neededType == ResourceType.None)
-        {
-            Debug.LogWarning($"[CartAgent] {name}: LoadInputCoroutine - neededType стал None! (возможно, слоты заполнились)");
-            ReturnHomeEmpty();
-            yield break;
-        }
 
         IResourceProvider source = _routing.inputSource;
         if (source == null)
         {
-            Debug.LogWarning($"[CartAgent] {name}: LoadInputCoroutine - inputSource == null! (маршрутизация не настроена)");
+            Debug.LogWarning($"[CartAgent] {name}: LoadInputCoroutine - inputSource == null!");
             ReturnHomeEmpty();
             yield break;
         }
 
-        Debug.Log($"[CartAgent] {name}: Источник Input: {source.GetGridPosition()}, тип: {source.GetType().Name}");
+        // Получаем список нужных ресурсов
+        List<ResourceType> neededTypes = GetNeededInputTypes(CARGO_SLOTS_COUNT);
 
-        // Проверяем доступное количество ПЕРЕД попыткой взять
-        float availableAtSource = source.GetAvailableAmount(neededType);
-        Debug.Log($"[CartAgent] {name}: В источнике доступно {availableAtSource} {neededType}");
-
-        if (availableAtSource < 0.1f)
+        if (neededTypes.Count == 0)
         {
-            Debug.LogWarning($"[CartAgent] {name}: В источнике недостаточно {neededType}, возвращаюсь пустым");
+            Debug.LogWarning($"[CartAgent] {name}: LoadInputCoroutine - список neededTypes пуст!");
             ReturnHomeEmpty();
             yield break;
         }
 
-        // Сколько можем взять?
-        float spaceInHome = _homeInput.GetAvailableSpace(neededType);
-        float amountToTake = Mathf.Min(cargoCapacity, spaceInHome);
+        Debug.Log($"[CartAgent] {name}: Пытаюсь загрузить {neededTypes.Count} типов ресурсов: {string.Join(", ", neededTypes)}");
 
-        Debug.Log($"[CartAgent] {name}: Пытаюсь взять {amountToTake} {neededType} (место в доме: {spaceInHome}, грузоподъемность: {cargoCapacity})");
+        // Очищаем слоты перед загрузкой
+        ClearAllCargoSlots();
 
-        // Берём ресурс
-        _cargoAmount = source.TryTakeResource(neededType, amountToTake);
-        _cargoType = neededType;
+        int loadedCount = 0;
+        int slotIndex = 0;
 
-        Debug.Log($"[CartAgent] {name}: TryTakeResource вернул {_cargoAmount} (запрашивали {amountToTake})");
-
-        if (_cargoAmount > 0)
+        // Загружаем каждый тип ресурса в отдельный слот
+        foreach (var resType in neededTypes)
         {
-            Debug.Log($"[CartAgent] {name} успешно загрузил {_cargoAmount} {_cargoType} из {source.GetGridPosition()}");
+            if (slotIndex >= CARGO_SLOTS_COUNT)
+                break;
 
-            // Едем домой
-            Debug.Log($"[CartAgent] {name}: Ищу путь домой к {_homePosition}...");
-            if (FindPathTo(_homePosition))
+            // Проверяем, доступен ли этот ресурс
+            float availableAtSource = source.GetAvailableAmount(resType);
+
+            if (availableAtSource < 1f)
             {
-                Debug.Log($"[CartAgent] {name}: Путь домой найден, начинаю движение с {_cargoAmount} {_cargoType}");
-                SetState(State.ReturningWithInput);
+                Debug.Log($"[CartAgent] {name}: Пропускаю {resType} - недостаточно в источнике ({availableAtSource})");
+                continue;
+            }
+
+            // Проверяем место в доме
+            float spaceInHome = _homeInput.GetAvailableSpace(resType);
+            if (spaceInHome < 0.1f)
+            {
+                Debug.Log($"[CartAgent] {name}: Пропускаю {resType} - нет места в доме");
+                continue;
+            }
+
+            // Берём ресурс (до 5 единиц или сколько поместится в доме)
+            float amountToTake = Mathf.Min(CargoSlot.MAX_CAPACITY, spaceInHome);
+            float amountTaken = source.TryTakeResource(resType, amountToTake);
+
+            if (amountTaken > 0)
+            {
+                // Загружаем в слот
+                _cargoSlots[slotIndex].resourceType = resType;
+                _cargoSlots[slotIndex].amount = amountTaken;
+
+                Debug.Log($"[CartAgent] {name} загрузил {amountTaken} {resType} из {source.GetGridPosition()} в слот [{slotIndex}]");
+
+                loadedCount++;
+                slotIndex++;
             }
             else
             {
-                Debug.LogError($"[CartAgent] {name}: НЕ МОГУ НАЙТИ ПУТЬ ДОМОЙ к {_homePosition}!");
-                ReturnInputToSource(source);
-                GoHomeAndIdle();
+                Debug.LogWarning($"[CartAgent] {name}: Не удалось загрузить {resType} - TryTakeResource вернул 0");
             }
+        }
+
+        // Проверяем, загрузили ли хоть что-то
+        if (loadedCount == 0)
+        {
+            Debug.LogWarning($"[CartAgent] {name}: Не удалось загрузить ни один ресурс!");
+            ReturnHomeEmpty();
+            yield break;
+        }
+
+        Debug.Log($"[CartAgent] {name}: Успешно загружено {loadedCount} типов ресурсов, еду домой");
+
+        // Едем домой
+        if (FindPathTo(_homePosition))
+        {
+            Debug.Log($"[CartAgent] {name}: Путь домой найден, начинаю движение");
+            SetState(State.ReturningWithInput);
         }
         else
         {
-            Debug.LogWarning($"[CartAgent] {name}: ОШИБКА: Не удалось загрузить {neededType} - TryTakeResource вернул 0, хотя GetAvailableAmount показал {availableAtSource}");
-            ReturnHomeEmpty();
+            Debug.LogError($"[CartAgent] {name}: НЕ МОГУ НАЙТИ ПУТЬ ДОМОЙ к {_homePosition}!");
+            ReturnAllInputToSource(source);
+            GoHomeAndIdle();
         }
     }
     
     // ════════════════════════════════════════════════════════════════
     //                  ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
     // ════════════════════════════════════════════════════════════════
-    
+
+    /// <summary>
+    /// Инициализирует грузовые слоты
+    /// </summary>
+    private void InitializeCargoSlots()
+    {
+        for (int i = 0; i < CARGO_SLOTS_COUNT; i++)
+        {
+            _cargoSlots[i] = new CargoSlot();
+        }
+    }
+
+    /// <summary>
+    /// Очищает все грузовые слоты
+    /// </summary>
+    private void ClearAllCargoSlots()
+    {
+        foreach (var slot in _cargoSlots)
+        {
+            slot.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Проверяет, есть ли хоть один груз в тележке
+    /// </summary>
+    private bool HasAnyCargo()
+    {
+        return _cargoSlots.Any(slot => !slot.IsEmpty);
+    }
+
+    /// <summary>
+    /// Проверяет, все ли слоты пусты
+    /// </summary>
+    private bool IsAllSlotsEmpty()
+    {
+        return _cargoSlots.All(slot => slot.IsEmpty);
+    }
+
+    /// <summary>
+    /// Возвращает свободный слот или слот с указанным типом ресурса (если есть место)
+    /// </summary>
+    private CargoSlot GetAvailableSlot(ResourceType resourceType)
+    {
+        // Сначала ищем слот с тем же типом ресурса (если не заполнен)
+        foreach (var slot in _cargoSlots)
+        {
+            if (slot.resourceType == resourceType && !slot.IsFull)
+            {
+                return slot;
+            }
+        }
+
+        // Если не нашли, ищем пустой слот
+        foreach (var slot in _cargoSlots)
+        {
+            if (slot.IsEmpty)
+            {
+                return slot;
+            }
+        }
+
+        // Нет свободных слотов
+        return null;
+    }
+
     /// <summary>
     /// Определяет, какой Input нужен дому (первый незаполненный слот)
+    /// УСТАРЕВШИЙ - использовать GetNeededInputTypes()
     /// </summary>
     private ResourceType GetNeededInputType()
     {
         if (_homeInput == null || _homeInput.requiredResources == null)
             return ResourceType.None;
 
-        // ✅ ИСПРАВЛЕНИЕ: Если слотов нет вообще (например, лесопилка), возвращаем None
         if (_homeInput.requiredResources.Count == 0)
             return ResourceType.None;
 
@@ -480,13 +640,38 @@ public class CartAgent : MonoBehaviour
             if (slot.maxAmount <= 0) continue;
 
             float fillRatio = slot.currentAmount / slot.maxAmount;
-            if (fillRatio < 0.9f) // Заполнен меньше чем на 90%
+            if (fillRatio < 0.9f)
             {
                 return slot.resourceType;
             }
         }
 
         return ResourceType.None;
+    }
+
+    /// <summary>
+    /// Возвращает список нужных Input ресурсов (до maxCount типов)
+    /// Приоритет отдается наиболее пустым слотам
+    /// </summary>
+    private List<ResourceType> GetNeededInputTypes(int maxCount)
+    {
+        List<ResourceType> result = new List<ResourceType>();
+
+        if (_homeInput == null || _homeInput.requiredResources == null || _homeInput.requiredResources.Count == 0)
+            return result;
+
+        // Сортируем слоты по fill ratio (сначала самые пустые)
+        var sortedSlots = _homeInput.requiredResources
+            .Where(slot => slot.maxAmount > 0 && slot.currentAmount / slot.maxAmount < 0.9f)
+            .OrderBy(slot => slot.currentAmount / slot.maxAmount)
+            .Take(maxCount);
+
+        foreach (var slot in sortedSlots)
+        {
+            result.Add(slot.resourceType);
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -585,9 +770,8 @@ public class CartAgent : MonoBehaviour
         {
             Debug.Log($"[CartAgent] {name}: Путь к источнику Input найден, начинаю движение");
             // Переходим в состояние "едем за Input"
-            // Используем ReturningWithInput, но без груза (просто едем к источнику)
+            // Используем ReturningWithInput, но без груза (слоты уже пусты)
             _state = State.ReturningWithInput;
-            _cargoAmount = 0;
         }
         else
         {
@@ -637,34 +821,59 @@ public class CartAgent : MonoBehaviour
     /// </summary>
     private void ReturnOutputToHome()
     {
-        if (_cargoAmount > 0 && _homeOutput != null)
+        if (_homeOutput == null) return;
+
+        for (int i = 0; i < CARGO_SLOTS_COUNT; i++)
         {
-            // Возвращаем как float (интерфейсный метод не подходит, используем старый метод)
-            int amountToReturn = Mathf.FloorToInt(_cargoAmount);
+            CargoSlot slot = _cargoSlots[i];
+            if (slot.IsEmpty) continue;
+
+            int amountToReturn = Mathf.FloorToInt(slot.amount);
             bool success = _homeOutput.TryAddResource(amountToReturn);
+
             if (success)
             {
-                Debug.Log($"[CartAgent] {name} вернул {amountToReturn} {_cargoType} обратно в дом");
+                Debug.Log($"[CartAgent] {name} вернул {amountToReturn} {slot.resourceType} из слота [{i}] обратно в дом");
             }
             else
             {
-                Debug.LogWarning($"[CartAgent] {name}: Не удалось вернуть {amountToReturn} {_cargoType} в дом (переполнен!)");
+                Debug.LogWarning($"[CartAgent] {name}: Не удалось вернуть {amountToReturn} {slot.resourceType} в дом (переполнен!)");
             }
         }
-        _cargoAmount = 0;
+
+        ClearAllCargoSlots();
     }
-    
+
     /// <summary>
-    /// Возвращает Input обратно источнику (если не смогли довезти домой)
+    /// Возвращает все Input слоты обратно источнику (если не смогли довезти домой)
+    /// </summary>
+    private void ReturnAllInputToSource(IResourceProvider source)
+    {
+        if (source == null || !(source is IResourceReceiver receiver))
+        {
+            Debug.LogWarning($"[CartAgent] {name}: Источник не является IResourceReceiver, не могу вернуть груз!");
+            ClearAllCargoSlots();
+            return;
+        }
+
+        for (int i = 0; i < CARGO_SLOTS_COUNT; i++)
+        {
+            CargoSlot slot = _cargoSlots[i];
+            if (slot.IsEmpty) continue;
+
+            receiver.TryAddResource(slot.resourceType, slot.amount);
+            Debug.Log($"[CartAgent] {name} вернул {slot.amount} {slot.resourceType} из слота [{i}] обратно в источник");
+        }
+
+        ClearAllCargoSlots();
+    }
+
+    /// <summary>
+    /// УСТАРЕВШИЙ - Возвращает Input обратно источнику (старый метод для совместимости)
     /// </summary>
     private void ReturnInputToSource(IResourceProvider source)
     {
-        if (_cargoAmount > 0 && source is IResourceReceiver receiver)
-        {
-            receiver.TryAddResource(_cargoType, _cargoAmount);
-            Debug.Log($"[CartAgent] {name} вернул {_cargoAmount} {_cargoType} обратно в источник");
-        }
-        _cargoAmount = 0;
+        ReturnAllInputToSource(source);
     }
     
     /// <summary>
@@ -695,7 +904,7 @@ public class CartAgent : MonoBehaviour
         transform.position = _homeBase.position;
         _currentPath = null;
         _pathIndex = 0;
-        _cargoAmount = 0;
+        ClearAllCargoSlots();
         SetState(State.Idle);
     }
     
@@ -736,10 +945,10 @@ public class CartAgent : MonoBehaviour
             if (isAtHome)
             {
                 // Вернулись домой
-                if (_cargoAmount > 0)
+                if (HasAnyCargo())
                 {
                     // С грузом - разгружаем
-                    Debug.Log($"[CartAgent] {name}: Приехал домой с {_cargoAmount} {_cargoType}, разгружаю");
+                    Debug.Log($"[CartAgent] {name}: Приехал домой с грузом, разгружаю");
                     StartCoroutine(UnloadInputAtHomeCoroutine());
                 }
                 else
@@ -751,8 +960,8 @@ public class CartAgent : MonoBehaviour
             }
             else
             {
-                // ✅ НОВОЕ: Приехали к источнику Input (не домой)
-                if (_cargoAmount == 0)
+                // ✅ Приехали к источнику Input (не домой)
+                if (IsAllSlotsEmpty())
                 {
                     Debug.Log($"[CartAgent] {name}: Приехал к источнику Input, начинаю загрузку");
                     // Пытаемся загрузить Input прямо здесь
@@ -761,7 +970,7 @@ public class CartAgent : MonoBehaviour
                 else
                 {
                     // Странная ситуация - груз есть, но мы не дома
-                    Debug.LogWarning($"[CartAgent] {name}: Приехал не домой с грузом {_cargoAmount} {_cargoType}! Возвращаюсь домой");
+                    Debug.LogWarning($"[CartAgent] {name}: Приехал не домой с грузом! Возвращаюсь домой");
                     ReturnHomeEmpty();
                 }
             }
@@ -769,21 +978,35 @@ public class CartAgent : MonoBehaviour
     }
     
     /// <summary>
-    /// Разгружаем Input в дом (последний шаг цикла)
+    /// Разгружаем все Input слоты в дом (последний шаг цикла)
     /// </summary>
     private IEnumerator UnloadInputAtHomeCoroutine()
     {
         yield return new WaitForSeconds(loadingTime);
-        
+
         if (_homeInput != null)
         {
-            float delivered = _homeInput.TryAddResource(_cargoType, _cargoAmount);
-            Debug.Log($"[CartAgent] {name} разгрузил {delivered} {_cargoType} в дом");
-            _cargoAmount -= delivered;
+            // Разгружаем все непустые слоты
+            for (int i = 0; i < CARGO_SLOTS_COUNT; i++)
+            {
+                CargoSlot slot = _cargoSlots[i];
+                if (slot.IsEmpty) continue;
+
+                float delivered = _homeInput.TryAddResource(slot.resourceType, slot.amount);
+                Debug.Log($"[CartAgent] {name} разгрузил {delivered} {slot.resourceType} из слота [{i}] в дом");
+
+                slot.amount -= delivered;
+
+                if (slot.amount > 0.01f)
+                {
+                    Debug.LogWarning($"[CartAgent] {name}: Не удалось полностью разгрузить слот [{i}] - осталось {slot.amount} {slot.resourceType}");
+                }
+            }
         }
-        
-        _cargoAmount = 0;
-        
+
+        // Очищаем все слоты
+        ClearAllCargoSlots();
+
         // Цикл завершён - возвращаемся в Idle
         SetState(State.Idle);
     }
@@ -798,15 +1021,15 @@ public class CartAgent : MonoBehaviour
         {
             // Путь потерялся
             Debug.LogWarning($"[CartAgent] {name}: Путь потерялся!");
-            
-            if (_cargoAmount > 0)
+
+            if (HasAnyCargo())
             {
                 if (_state == State.DeliveringOutput)
                     ReturnOutputToHome();
                 else if (_state == State.ReturningWithInput)
-                    ReturnInputToSource(_routing.inputSource);
+                    ReturnAllInputToSource(_routing.inputSource);
             }
-            
+
             GoHomeAndIdle();
             return;
         }

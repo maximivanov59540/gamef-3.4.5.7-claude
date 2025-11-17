@@ -7,6 +7,15 @@ public class AuraEmitter : MonoBehaviour
     public AuraDistributionType distributionType = AuraDistributionType.Radial;
     public float radius = 20f;
 
+    [Header("Влияние на События")]
+    [Tooltip("Снижение шанса события в радиусе ауры (0-1)\\n\\n" +
+             "ПРИМЕРЫ:\\n" +
+             "  • Больница: 0.3 = снижает шанс пандемии на 30%\\n" +
+             "  • Полицейский участок: 0.3 = снижает шанс бунта на 30%\\n\\n" +
+             "Используется только для Hospital и Police аур")]
+    [Range(0f, 1f)]
+    public float eventChanceReduction = 0.3f;
+
     // ── НОВОЕ: позиция эмиттера в сетке ───────────────────────
     private Vector2Int _rootGridPosition;
     private GridSystem _gridSystem;
@@ -69,5 +78,38 @@ public class AuraEmitter : MonoBehaviour
     public BuildingIdentity GetIdentity() // <-- (3/3) НОВЫЙ МЕТОД
     {
         return _identity;
+    }
+
+    /// <summary>
+    /// Проверяет, активна ли аура (здание построено и работает)
+    /// </summary>
+    public bool IsActive()
+    {
+        if (_identity == null) return false;
+
+        // Проверяем, что здание не в режиме блюпринта
+        return !_identity.isBlueprint;
+    }
+
+    /// <summary>
+    /// Проверяет, находится ли здание в радиусе ауры
+    /// </summary>
+    public bool IsBuildingInRange(Vector2Int buildingPos)
+    {
+        if (distributionType == AuraDistributionType.Radial)
+        {
+            // Простое радиальное расстояние
+            float distance = Vector2Int.Distance(_rootGridPosition, buildingPos);
+            return distance <= radius;
+        }
+        else if (distributionType == AuraDistributionType.RoadBased)
+        {
+            // TODO: Реализовать проверку через дорожную сеть
+            // Пока используем радиальное расстояние как fallback
+            float distance = Vector2Int.Distance(_rootGridPosition, buildingPos);
+            return distance <= radius;
+        }
+
+        return false;
     }
 }

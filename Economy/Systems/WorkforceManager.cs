@@ -38,6 +38,16 @@ public class WorkforceManager : MonoBehaviour
     [SerializeField] private int _artisansAvailable = 0;
     [SerializeField] private float _artisansRatio = 1.0f;
 
+    [Header("Статистика WhiteClergy (Белое духовенство)")]
+    [SerializeField] private int _whiteClergyRequired = 0;
+    [SerializeField] private int _whiteClergyAvailable = 0;
+    [SerializeField] private float _whiteClergyRatio = 1.0f;
+
+    [Header("Статистика BlackClergy (Черное духовенство)")]
+    [SerializeField] private int _blackClergyRequired = 0;
+    [SerializeField] private int _blackClergyAvailable = 0;
+    [SerializeField] private float _blackClergyRatio = 1.0f;
+
     void Awake()
     {
         if (Instance != null && Instance != this)
@@ -125,13 +135,15 @@ public class WorkforceManager : MonoBehaviour
     /// <summary>
     /// Обновляет доступных работников по типам (вызывается из PopulationManager)
     /// </summary>
-    public void UpdateAvailableWorkforce(int farmers, int craftsmen, int artisans)
+    public void UpdateAvailableWorkforce(int farmers, int craftsmen, int artisans, int whiteClergy, int blackClergy)
     {
         _totalAvailableWorkforce[PopulationTier.Farmers] = farmers;
         _totalAvailableWorkforce[PopulationTier.Craftsmen] = craftsmen;
         _totalAvailableWorkforce[PopulationTier.Artisans] = artisans;
+        _totalAvailableWorkforce[PopulationTier.WhiteClergy] = whiteClergy;
+        _totalAvailableWorkforce[PopulationTier.BlackClergy] = blackClergy;
 
-        Debug.Log($"[Workforce] Доступные работники обновлены: Farmers={farmers}, Craftsmen={craftsmen}, Artisans={artisans}");
+        Debug.Log($"[Workforce] Доступные работники обновлены: Farmers={farmers}, Craftsmen={craftsmen}, Artisans={artisans}, WhiteClergy={whiteClergy}, BlackClergy={blackClergy}");
     }
 
     /// <summary>
@@ -179,13 +191,23 @@ public class WorkforceManager : MonoBehaviour
     }
 
     /// <summary>
-    /// УСТАРЕВШИЙ метод для обратной совместимости
+    /// УСТАРЕВШИЙ метод для обратной совместимости (3 параметра)
     /// </summary>
-    [System.Obsolete("Используйте UpdateAvailableWorkforce(int, int, int) вместо этого")]
+    [System.Obsolete("Используйте UpdateAvailableWorkforce(int, int, int, int, int) вместо этого")]
+    public void UpdateAvailableWorkforce(int farmers, int craftsmen, int artisans)
+    {
+        // Для обратной совместимости вызываем новую версию с нулями для духовенства
+        UpdateAvailableWorkforce(farmers, craftsmen, artisans, 0, 0);
+    }
+
+    /// <summary>
+    /// УСТАРЕВШИЙ метод для обратной совместимости (1 параметр)
+    /// </summary>
+    [System.Obsolete("Используйте UpdateAvailableWorkforce(int, int, int, int, int) вместо этого")]
     public void UpdateAvailableWorkforce(int totalPopulation)
     {
         // Для обратной совместимости считаем всех работников как Farmers
-        UpdateAvailableWorkforce(totalPopulation, 0, 0);
+        UpdateAvailableWorkforce(totalPopulation, 0, 0, 0, 0);
     }
 
     /// <summary>
@@ -228,5 +250,13 @@ public class WorkforceManager : MonoBehaviour
         _artisansRequired = GetRequiredWorkforce(PopulationTier.Artisans);
         _artisansAvailable = GetAvailableWorkforce(PopulationTier.Artisans);
         _artisansRatio = GetWorkforceRatio(PopulationTier.Artisans);
+
+        _whiteClergyRequired = GetRequiredWorkforce(PopulationTier.WhiteClergy);
+        _whiteClergyAvailable = GetAvailableWorkforce(PopulationTier.WhiteClergy);
+        _whiteClergyRatio = GetWorkforceRatio(PopulationTier.WhiteClergy);
+
+        _blackClergyRequired = GetRequiredWorkforce(PopulationTier.BlackClergy);
+        _blackClergyAvailable = GetAvailableWorkforce(PopulationTier.BlackClergy);
+        _blackClergyRatio = GetWorkforceRatio(PopulationTier.BlackClergy);
     }
 }

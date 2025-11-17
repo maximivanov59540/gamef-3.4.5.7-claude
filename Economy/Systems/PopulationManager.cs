@@ -27,6 +27,10 @@ public class PopulationManager : MonoBehaviour
     [SerializeField] private int _craftsmenMax = 0;
     [SerializeField] private int _artisansCurrent = 0;
     [SerializeField] private int _artisansMax = 0;
+    [SerializeField] private int _whiteClergyCurrent = 0;
+    [SerializeField] private int _whiteClergyMax = 0;
+    [SerializeField] private int _blackClergyCurrent = 0;
+    [SerializeField] private int _blackClergyMax = 0;
 
     void Awake()
     {
@@ -189,7 +193,9 @@ public class PopulationManager : MonoBehaviour
         WorkforceManager.Instance.UpdateAvailableWorkforce(
             _maxPopulation[PopulationTier.Farmers],
             _maxPopulation[PopulationTier.Craftsmen],
-            _maxPopulation[PopulationTier.Artisans]
+            _maxPopulation[PopulationTier.Artisans],
+            _maxPopulation[PopulationTier.WhiteClergy],
+            _maxPopulation[PopulationTier.BlackClergy]
         );
     }
 
@@ -204,6 +210,10 @@ public class PopulationManager : MonoBehaviour
         _craftsmenMax = GetMaxPopulation(PopulationTier.Craftsmen);
         _artisansCurrent = GetCurrentPopulation(PopulationTier.Artisans);
         _artisansMax = GetMaxPopulation(PopulationTier.Artisans);
+        _whiteClergyCurrent = GetCurrentPopulation(PopulationTier.WhiteClergy);
+        _whiteClergyMax = GetMaxPopulation(PopulationTier.WhiteClergy);
+        _blackClergyCurrent = GetCurrentPopulation(PopulationTier.BlackClergy);
+        _blackClergyMax = GetMaxPopulation(PopulationTier.BlackClergy);
     }
 
     // --- УСТАРЕВШИЕ МЕТОДЫ (для обратной совместимости) ---

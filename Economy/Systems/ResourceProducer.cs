@@ -373,14 +373,20 @@ private void FindWarehouseAccess()
     public float GetEfficiency() => _efficiencyModifier;
     
     
-    private void PauseProduction()
+    /// <summary>
+    /// Останавливает производство (например, при событии "Бунт")
+    /// </summary>
+    public void PauseProduction()
     {
         if (IsPaused) return;
         IsPaused = true;
         // Debug.Log($"Производство {gameObject.name} на ПАУЗЕ (склад полон).");
     }
 
-    private void ResumeProduction()
+    /// <summary>
+    /// Возобновляет производство
+    /// </summary>
+    public void ResumeProduction()
     {
         if (!IsPaused) return;
         IsPaused = false;

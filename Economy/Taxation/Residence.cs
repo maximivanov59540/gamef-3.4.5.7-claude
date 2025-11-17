@@ -190,6 +190,9 @@ public class Residence : MonoBehaviour
     // Процент удовлетворения потребностей (0.0 - 1.0)
     private float _needsSatisfactionRate = 1.0f;
 
+    // Результаты последней проверки потребностей (для интеграции с событиями)
+    private List<NeedResult> _lastNeedResults = new List<NeedResult>();
+
     private void Start()
     {
         // (Получаем ссылки... без изменений)
@@ -345,6 +348,9 @@ public class Residence : MonoBehaviour
     /// </summary>
     private void ProcessResults(List<NeedResult> resourceResults)
     {
+        // Сохраняем результаты для интеграции с событиями
+        _lastNeedResults = new List<NeedResult>(resourceResults);
+
         float totalHappinessChange = 0;
         float totalTax = baseTaxAmount; // Начинаем с "базового" налога
         int totalPopulation = 0; // НОВОЕ: суммируем жителей из каждой потребности
@@ -419,5 +425,45 @@ public class Residence : MonoBehaviour
         }
 
         return _currentTax;
+    }
+
+    /// <summary>
+    /// Возвращает суммарное снижение шанса пандемии от удовлетворенных потребностей
+    /// (используется EventManager для расчета вероятности событий)
+    /// </summary>
+    public float GetPandemicChanceReduction()
+    {
+        float totalReduction = 0f;
+
+        foreach (var result in _lastNeedResults)
+        {
+            // Только УДОВЛЕТВОРЕННЫЕ потребности дают снижение шанса
+            if (result.isMet)
+            {
+                totalReduction += result.need.pandemicChanceReduction;
+            }
+        }
+
+        return Mathf.Clamp01(totalReduction);
+    }
+
+    /// <summary>
+    /// Возвращает суммарное снижение шанса бунта от удовлетворенных потребностей
+    /// (используется EventManager для расчета вероятности событий)
+    /// </summary>
+    public float GetRiotChanceReduction()
+    {
+        float totalReduction = 0f;
+
+        foreach (var result in _lastNeedResults)
+        {
+            // Только УДОВЛЕТВОРЕННЫЕ потребности дают снижение шанса
+            if (result.isMet)
+            {
+                totalReduction += result.need.riotChanceReduction;
+            }
+        }
+
+        return Mathf.Clamp01(totalReduction);
     }
 }
