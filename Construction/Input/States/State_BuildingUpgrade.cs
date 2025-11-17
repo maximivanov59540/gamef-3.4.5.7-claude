@@ -127,7 +127,7 @@ public class State_BuildingUpgrade
         var outputInv = newIdentity.GetComponent<BuildingOutputInventory>();
         if (outputInv != null && outputAmount > 0)
         {
-            outputInv.TryAddResource(outputAmount);
+            outputInv.TryAddResource(Mathf.RoundToInt(outputAmount));
         }
 
         // Восстанавливаем прогресс производства

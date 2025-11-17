@@ -487,7 +487,7 @@ public class BuildingManager : MonoBehaviour
             {
                 foreach (var cost in currentData.upgradeCost)
                 {
-                    _resourceManager.AddResources(cost.resourceType, cost.amount);
+                    _resourceManager.AddToStorage(cost.resourceType, cost.amount);
                 }
             }
             MoneyManager.Instance.AddMoney(currentData.upgradeMoneyCost);
@@ -745,7 +745,16 @@ public class BuildingManager : MonoBehaviour
             _resourceManager.SpendResources(_selectedBuildingData);
             if (_selectedBuildingData.housingCapacity > 0)
             {
-                _populationManager.AddHousingCapacity(_selectedBuildingData.housingCapacity);
+                var residence = newBuilding.GetComponent<Residence>();
+                if (residence != null)
+                {
+                    _populationManager.AddHousingCapacity(residence.populationTier, _selectedBuildingData.housingCapacity);
+                }
+                else
+                {
+                    // Fallback для старого кода (здания без компонента Residence)
+                    _populationManager.AddHousingCapacity(PopulationTier.Farmers, _selectedBuildingData.housingCapacity);
+                }
             }
 
             var producer = newBuilding.GetComponent<ResourceProducer>();
@@ -791,7 +800,16 @@ public class BuildingManager : MonoBehaviour
         if (!identity.isBlueprint && identity.buildingData.housingCapacity > 0)
         {
             // Убираем жилье. (Проверяем _populationManager на null на всякий случай)
-            _populationManager?.RemoveHousingCapacity(identity.buildingData.housingCapacity);
+            var residence = identity.GetComponent<Residence>();
+            if (residence != null)
+            {
+                _populationManager?.RemoveHousingCapacity(residence.populationTier, identity.buildingData.housingCapacity);
+            }
+            else
+            {
+                // Fallback для старого кода (здания без компонента Residence)
+                _populationManager?.RemoveHousingCapacity(PopulationTier.Farmers, identity.buildingData.housingCapacity);
+            }
         }
 
         // --- 2. ЛОГИКА ОЧИСТКИ (старый код) ---
@@ -845,7 +863,7 @@ public class BuildingManager : MonoBehaviour
         }
 
         // 2. Проверяем, можно ли разместить
-        if (!_gridSystem.CanPlaceBuilding(gridPos, size))
+        if (!_gridSystem.CanBuildAt(gridPos, size))
         {
             Debug.LogWarning($"[BuildingManager] PlaceBuildingDirect: Невозможно разместить здание на {gridPos}");
             return null;
@@ -1206,7 +1224,16 @@ public class BuildingManager : MonoBehaviour
             // "Добавляем" жилье
             if (data.housingCapacity > 0)
             {
-                _populationManager.AddHousingCapacity(data.housingCapacity);
+                var residence = newBuilding.GetComponent<Residence>();
+                if (residence != null)
+                {
+                    _populationManager.AddHousingCapacity(residence.populationTier, data.housingCapacity);
+                }
+                else
+                {
+                    // Fallback для старого кода (здания без компонента Residence)
+                    _populationManager.AddHousingCapacity(PopulationTier.Farmers, data.housingCapacity);
+                }
             }
 
             // "Включаем" производство
