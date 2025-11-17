@@ -309,16 +309,10 @@ public class EventManager : MonoBehaviour
     /// </summary>
     private float GetHappinessModifier()
     {
-        if (HapinessManager.Instance == null) return 1f;
+        if (HappinessManager.Instance == null) return 1f;
 
-        float happiness = HapinessManager.Instance.globalHappiness; // 0-100
-
-        // Линейная интерполяция: happiness=0 -> mod=1.0, happiness=100 -> mod=maxHappinessReduction
-        float normalized = happiness / 100f; // 0-1
-        float modifier = Mathf.Lerp(1f, maxHappinessReduction, normalized);
-
-        // Применяем множитель силы влияния
-        modifier = Mathf.Lerp(1f, modifier, happinessMultiplier / 5f);
+        // Используем специальный метод для событий, который учитывает диапазон счастья
+        float modifier = HappinessManager.Instance.GetEventChanceModifier();
 
         return Mathf.Clamp(modifier, 0.01f, 10f);
     }
@@ -341,7 +335,7 @@ public class EventManager : MonoBehaviour
             : AuraType.Police;
 
         // Получаем все излучатели нужного типа
-        var emitters = FindObjectsOfType<AuraEmitter>()
+        var emitters = FindObjectsByType<AuraEmitter>(FindObjectsSortMode.None)
             .Where(e => e.type == auraType && e.IsActive())
             .ToList();
 

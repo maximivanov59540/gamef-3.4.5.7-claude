@@ -151,7 +151,7 @@ public class EventAffected : MonoBehaviour
         var producer = GetComponent<ResourceProducer>();
         if (producer != null)
         {
-            producer.isPaused = false; // Возобновляем производство
+            producer.ResumeProduction(); // Возобновляем производство
         }
     }
 
@@ -173,7 +173,7 @@ public class EventAffected : MonoBehaviour
         var producer = GetComponent<ResourceProducer>();
         if (producer != null)
         {
-            producer.isPaused = true;
+            producer.PauseProduction();
             Debug.Log($"[EventAffected] {name}: Производство остановлено из-за бунта");
         }
 
