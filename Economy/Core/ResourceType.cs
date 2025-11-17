@@ -37,6 +37,8 @@ public enum ResourceType
     HerbMixture,       // Смесь трав
     Beer,              // Пиво
     Pigments,          // Пигменты
+    LeatherShoes,      // Кожаные башмаки
+    CarvedToys,        // Вырезные игрушки
 
     // --- Тир 3: Цеховые ---
     HeartyStew,        // Сытное рагу
