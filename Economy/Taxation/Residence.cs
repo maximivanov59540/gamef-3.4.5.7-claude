@@ -28,29 +28,36 @@ using UnityEngine;
 // baseTaxAmount = 1.0                     // Базовый налог (всегда платится)
 //
 // basicNeeds (список):
-//   [0] Рыба (базовая еда):
+//   [0] Рыба (базовая еда) - доступна сразу:
 //       resourceType = Fish
 //       amountPerMinute = 0.1            // 10 домов = 1 рыба/мин
 //       populationBonus = 5              // +5 жителей
 //       happinessBonus = 0.5             // +0.5 счастья
 //       taxBonusPerCycle = 0.5           // +0.5 золота
 //       happinessPenalty = -1.0          // -1.0 счастья (голод критичен!)
+//       requiresUnlock = false           // ✓ Доступна сразу
 //
-//   [1] Одежда (комфорт):
+//   [1] Одежда (комфорт) - требует 50 смердов:
 //       resourceType = Clothes
 //       amountPerMinute = 0.05           // 20 домов = 1 одежда/мин
 //       populationBonus = 3              // +3 жителя
 //       happinessBonus = 0.3             // +0.3 счастья
 //       taxBonusPerCycle = 1.0           // +1.0 золота
 //       happinessPenalty = -0.5          // -0.5 счастья
+//       requiresUnlock = true            // Требует разблокировки!
+//       unlockPopulationTier = Farmers   // Нужны смерды
+//       unlockAtPopulation = 50          // Минимум 50 смердов
 //
-//   [2] Пиво (роскошь):
+//   [2] Пиво (роскошь) - требует 100 посадских:
 //       resourceType = Beer
 //       amountPerMinute = 0.033          // 30 домов = 1 пиво/мин
 //       populationBonus = 2              // +2 жителя
 //       happinessBonus = 0.2             // +0.2 счастья
 //       taxBonusPerCycle = 2.0           // +2.0 золота
 //       happinessPenalty = -0.2          // -0.2 счастья
+//       requiresUnlock = true            // Требует разблокировки!
+//       unlockPopulationTier = Craftsmen // Нужны посадские
+//       unlockAtPopulation = 100         // Минимум 100 посадских
 //
 // --- РЕЗУЛЬТАТЫ (при всех потребностях удовлетворены) ---
 // Жители: 5 + 3 + 2 = 10 (лимит housingCapacity)
@@ -91,6 +98,34 @@ using UnityEngine;
 //
 // Рекомендация: Оставить consumptionIntervalSeconds = 10 (удобный баланс)
 //              Настраивать только amountPerMinute
+//
+// ============================================================================
+// МЕХАНИКА РАЗБЛОКИРОВКИ ПОТРЕБНОСТЕЙ (Anno 1800 Progression)
+// ============================================================================
+//
+// Потребности могут быть ЗАБЛОКИРОВАНЫ до достижения определенного населения.
+// Пока потребность заблокирована:
+//   • НЕ потребляется (ресурс не списывается)
+//   • НЕ дает бонусы (население, счастье, налоги)
+//   • НЕ дает штрафы (нет негатива от отсутствия)
+//   • Полностью игнорируется системой
+//
+// После разблокировки (достигли нужного населения):
+//   • Автоматически начинает работать
+//   • Применяются все бонусы/штрафы
+//
+// ПРИМЕР ПРОГРЕССИИ:
+//   Старт → 0 жителей
+//   ↓
+//   Строим дома смердов → Рыба (requiresUnlock = false) → +5 жителей/дом
+//   ↓
+//   Достигли 50 смердов
+//   ↓
+//   РАЗБЛОКИРОВКА: Одежда (требует Farmers >= 50) → +3 жителя/дом
+//   ↓
+//   Достигли 100 посадских
+//   ↓
+//   РАЗБЛОКИРОВКА: Пиво (требует Craftsmen >= 100) → +2 жителя/дом
 //
 // ============================================================================
 
@@ -248,16 +283,26 @@ public class Residence : MonoBehaviour
 
     /// <summary>
     /// (Шаг Б - УСПЕХ) Пытается "купить" (списать) ресурсы и возвращает отчет.
+    /// НОВОЕ: Пропускает ЗАБЛОКИРОВАННЫЕ потребности (не обрабатывает их)
     /// </summary>
     private List<NeedResult> CheckAndConsumeResourceNeeds()
     {
         float intervalAsFractionOfMinute = consumptionIntervalSeconds / 60f;
         var results = new List<NeedResult>();
 
-        // --- ПЕРЕДЕЛКА: "По-предметная" проверка ---
+        // --- "По-предметная" проверка (только РАЗБЛОКИРОВАННЫЕ) ---
         results.Clear();
         foreach (var need in basicNeeds)
         {
+            // ========== ПРОВЕРКА РАЗБЛОКИРОВКИ ==========
+            if (!need.IsUnlocked())
+            {
+                // Потребность ЗАБЛОКИРОВАНА - пропускаем (не добавляем в results)
+                // Она не влияет ни на что: не потребляется, не дает бонусы/штрафы
+                continue;
+            }
+
+            // Потребность РАЗБЛОКИРОВАНА - обрабатываем как обычно
             float amountToConsume = need.amountPerMinute * intervalAsFractionOfMinute;
 
             // Пытаемся "купить" (списать) ЭТОТ ОДИН предмет
@@ -274,12 +319,21 @@ public class Residence : MonoBehaviour
 
     /// <summary>
     /// (Шаг Б - ПРОВАЛ) "Проваливает" все потребности (т.к. нет рынка).
+    /// НОВОЕ: Пропускает ЗАБЛОКИРОВАННЫЕ потребности (не обрабатывает их)
     /// </summary>
     private List<NeedResult> FailAllResourceNeeds()
     {
         var results = new List<NeedResult>();
         foreach (var need in basicNeeds)
         {
+            // ========== ПРОВЕРКА РАЗБЛОКИРОВКИ ==========
+            if (!need.IsUnlocked())
+            {
+                // Потребность ЗАБЛОКИРОВАНА - пропускаем (не добавляем в results)
+                continue;
+            }
+
+            // Потребность РАЗБЛОКИРОВАНА - "проваливаем" (нет рынка)
             results.Add(new NeedResult { need = need, isMet = false });
         }
         return results;
@@ -336,8 +390,18 @@ public class Residence : MonoBehaviour
         _currentTax = totalTax; // TaxManager заберет плавно
 
         // Обновляем PopulationManager о текущем количестве жителей
+
+        // Подсчитываем заблокированные потребности для отладки
+        int lockedNeedsCount = 0;
+        foreach (var need in basicNeeds)
+        {
+            if (!need.IsUnlocked())
+                lockedNeedsCount++;
+        }
+
         Debug.Log($"[Residence] {gameObject.name}: " +
                   $"Потребности: {satisfiedNeeds}/{totalNeeds} ({_needsSatisfactionRate * 100f:F1}%), " +
+                  $"Заблокировано: {lockedNeedsCount}, " +
                   $"Жителей: {_currentResidents}/{housingCapacity}, " +
                   $"Счастье: {totalHappinessChange:+0.0;-0.0}, " +
                   $"Налог: {totalTax:F2}");
