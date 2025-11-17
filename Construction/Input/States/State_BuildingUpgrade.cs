@@ -45,11 +45,14 @@ public class State_BuildingUpgrade
 
         // Сохраняем входной инвентарь
         var inputInv = identity.GetComponent<BuildingInputInventory>();
-        if (inputInv != null)
+        if (inputInv != null && inputInv.requiredResources != null)
         {
-            foreach (var kvp in inputInv.GetAllResources())
+            foreach (var slot in inputInv.requiredResources)
             {
-                state.inputInventory[kvp.Key] = kvp.Value;
+                if (slot.currentAmount > 0)
+                {
+                    state.inputInventory[slot.resourceType] = slot.currentAmount;
+                }
             }
         }
 
